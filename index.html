@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<!-- 不准連到任何地方（connect-src 'none'），只允許本頁內嵌的樣式、程式與自己畫的圖片。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>汽車保費試算結果</title>
+<!--
+  「手機掃描帶走」的公開網頁（2026-11-16 使用者定案，樣稿 docs/qr-handoff-sample.html，說明 docs/qr-handoff.md）。
+  這是一個固定不變的 HTML 檔，放在 GitHub Pages（網址寫在 src/shared/quote-handoff.ts 的 handoffViewerUrl）。
+  只有改了版面或資料格式時才重新上傳；資料格式由 src/shared/quote-handoff.ts 產生，兩邊一起改。
+  每位客人的結果都裝在 QR code 網址的「#」後面，由這一頁在客人手機上自己解開、畫出來：
+    1. 讀 location.hash（# 後面那段，瀏覽器不會把它傳給網站主機）
+    2. base64url → UTF-8 文字 → JSON 陣列
+    3. 用 createElement / textContent 畫成結果頁（不用 innerHTML，網址內容可能被人亂改，不能當 HTML 執行）
+  這一頁不載入任何外部程式、字型、統計工具，也不呼叫任何 API。
+-->
+<style>
+  :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; color: #172033; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #eef3f8; line-height: 1.5; }
+  .wrap { width: min(560px, 100%); margin: 0 auto; padding: 16px 16px 132px; }
+  .doc { padding: 22px 18px 18px; border: 1px solid #d8e0e9; border-radius: 20px; background: #fff; box-shadow: 0 10px 30px rgba(28, 47, 75, .08); }
+  .head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid #d8e0e9; }
+  .check { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border-radius: 50%; color: #fff; background: #18775b; font-size: 23px; font-weight: 800; }
+  .eyebrow { margin: 0 0 2px; color: #566479; font-size: 15px; font-weight: 750; letter-spacing: .04em; }
+  h1 { margin: 0; font-size: 30px; line-height: 1.25; }
+  .mark { padding: 0 .12em; background: linear-gradient(transparent 52%, #ffe14d 52%, #ffe14d 92%, transparent 92%); }
+  .when { margin: 8px 0 0; color: #566479; font-size: 15px; font-weight: 700; }
+  .vehicle { margin-top: 14px; padding: 10px 18px; border: 2.5px solid #172033; border-radius: 16px; }
+  .vehicle-label { margin: 0; color: #566479; font-size: 16px; font-weight: 750; }
+  .vehicle-value { margin: 0; font-size: 30px; font-weight: 850; letter-spacing: .04em; line-height: 1.25; }
+  .cards { display: grid; gap: 10px; margin: 14px 0 10px; }
+  .card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border: 1.5px solid #cbd7e5; border-radius: 16px; }
+  .card.highlight { background: #eef6ff; border-color: #b9d6f7; }
+  .card-label { margin: 0; font-size: 19px; font-weight: 800; }
+  .amount { margin: 0; color: #b84c13; font-size: 28px; font-weight: 850; letter-spacing: -.02em; white-space: nowrap; }
+  .amount small, .total-amount small, .pay strong small { font-size: 15px; font-weight: 700; letter-spacing: 0; }
+  .not-selected { margin: 0; color: #718096; font-size: 20px; font-weight: 700; }
+  .total { padding: 12px 18px; border: 2.5px solid #b84c13; border-radius: 16px; background: #fff4ec; }
+  .total-label { margin: 0; font-size: 21px; font-weight: 800; }
+  .total-label small { margin-left: 6px; font-size: 14px; font-weight: 600; }
+  .total-amount { margin: 0; color: #b84c13; font-size: 40px; font-weight: 850; letter-spacing: -.02em; line-height: 1.2; white-space: nowrap; }
+  .details { margin-top: 16px; border: 1px solid #d8e0e9; border-radius: 16px; overflow: hidden; }
+  .details h2 { margin: 0; padding: 10px 16px; background: #f7f9fc; font-size: 17px; }
+  .row { padding: 12px 16px 14px; border-top: 1px solid #d8e0e9; }
+  .row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .name { font-size: 19px; font-weight: 800; }
+  .pay { margin: 0; text-align: right; }
+  .pay > small { display: block; color: #566479; font-size: 13px; font-weight: 750; }
+  .pay strong { display: block; color: #b84c13; font-size: 25px; font-weight: 900; line-height: 1.2; white-space: nowrap; }
+  .note { display: block; margin-top: 4px; font-size: 16px; font-weight: 700; }
+  .row.not-offered .note, .row.not-offered .pay strong { color: #b84c13; }
+  .row.not-offered.free .note, .row.not-offered.free .pay strong { color: #0f766e; }
+  .upcoming { display: block; margin-top: 8px; color: #b84c13; font-size: 15px; font-weight: 700; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 8px; }
+  .tile { padding: 6px 10px 8px; border: 1.5px solid #c9dcf3; border-radius: 12px; background: #f3f8fe; }
+  .tile span { display: block; }
+  .tile-label { color: #3b4a5f; font-size: 14px; font-weight: 750; }
+  .tile-amount { color: #1757a6; font-size: 25px; font-weight: 900; line-height: 1.2; }
+  .tile-amount small { margin-left: 2px; font-size: 15px; font-weight: 800; }
+  .tile-note { color: #3b4a5f; font-size: 13px; font-weight: 600; }
+  .warning { margin-top: 14px; padding: 10px 14px; border: 1.5px solid #edc776; border-radius: 14px; background: #fff9e9; color: #70470b; font-size: 15px; line-height: 1.7; }
+  .warning strong { display: block; color: #593602; font-size: 16px; }
+  .fine { margin: 10px 0 0; text-align: center; color: #64748b; font-size: 13px; }
+  .privacy { margin: 14px 4px 0; color: #566479; font-size: 13px; line-height: 1.7; text-align: center; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: #fff; border-top: 2px solid #d8e0e9; box-shadow: 0 -8px 24px rgba(15, 23, 42, .1); }
+  .bar-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(560px, 100%); margin: 0 auto; }
+  .bar button { min-height: 56px; border-radius: 14px; font: inherit; font-size: 18px; font-weight: 800; }
+  .btn-primary { border: 2.5px solid #1d4ed8; background: #1d4ed8; color: #fff; }
+  .btn-secondary { border: 2.5px solid #1d4ed8; background: #fff; color: #1d4ed8; }
+  .error { padding: 28px 20px; border: 2px solid #b84c13; border-radius: 18px; background: #fff; font-size: 20px; font-weight: 750; line-height: 1.7; }
+  .error small { display: block; margin-top: 8px; color: #566479; font-size: 15px; font-weight: 600; }
+  .sheet { position: fixed; inset: 0; z-index: 5; display: grid; align-content: start; gap: 12px; padding: 16px; overflow-y: auto; background: rgba(15, 23, 42, .82); }
+  .sheet p { margin: 0; color: #fff; font-size: 19px; font-weight: 800; line-height: 1.6; text-align: center; }
+  .sheet img { display: block; width: min(520px, 100%); margin: 0 auto; border-radius: 10px; background: #fff; }
+  .sheet a, .sheet button { display: block; width: min(520px, 100%); min-height: 56px; margin: 0 auto; border-radius: 14px; font: inherit; font-size: 18px; font-weight: 800; text-align: center; text-decoration: none; line-height: 52px; }
+  .sheet a { border: 2.5px solid #fff; color: #fff; }
+  .sheet button { border: 0; background: #fff; color: #172033; }
+  .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px; background: #172033; color: #fff; font-size: 16px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(() => {
+  'use strict';
+  const app = document.getElementById('app');
+  // 同一個分頁再掃一次別的 QR code 時，只有 # 後面變了、頁面不會重新載入，所以自己重新載入。
+  addEventListener('hashchange', () => location.reload());
+
+  // 資料格式第 1 版（放在 # 後面，base64url 編碼的 UTF-8 JSON 陣列）：
+  // [1, 公司名, 車種, 試算時間, 強制險小計|null, 任意險小計|null, 明細群組[]]
+  //   明細群組：[群組名稱, 列[]]
+  //   一般列：[險種名稱, 保費(數字), 保額格[], 到期提醒?]       保額格：[項目, 數字, 單位, 小字?]
+  //   不提供列：[險種名稱, "x" 或 "free", 說明]
+  const decode = (hash) => {
+    const text = hash.replace(/^#/, '').replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(text + '='.repeat((4 - text.length % 4) % 4));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  };
+  const isText = (value) => typeof value === 'string' && value.length > 0 && value.length <= 80;
+  const isMoney = (value) => Number.isSafeInteger(value) && value >= 0 && value < 10_000_000;
+  const isTile = (tile) => Array.isArray(tile) && isText(tile[0]) && isText(tile[1]) && typeof tile[2] === 'string' && (tile[3] === undefined || isText(tile[3]));
+  const isRow = (row) => Array.isArray(row) && isText(row[0]) && (
+    (isMoney(row[1]) && Array.isArray(row[2]) && row[2].every(isTile) && (row[3] === undefined || isText(row[3])))
+    || ((row[1] === 'x' || row[1] === 'free') && isText(row[2])));
+  // 網址可能被截斷或被改過：格式不對就整頁不顯示，不顯示一半的結果。
+  const valid = (data) => Array.isArray(data) && data[0] === 1 && isText(data[1]) && isText(data[2]) && isText(data[3])
+    && (data[4] === null || isMoney(data[4])) && (data[5] === null || isMoney(data[5]))
+    && Array.isArray(data[6]) && data[6].every((group) => Array.isArray(group) && isText(group[0]) && Array.isArray(group[1]) && group[1].every(isRow));
+
+  const money = (value) => value.toLocaleString('zh-TW');
+  const el = (tag, className, ...children) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    for (const child of children) if (child !== null && child !== undefined) node.append(child);
+    return node;
+  };
+  const ntd = (value, className) => el('p', className, el('small', '', 'NT$ '), money(value));
+
+  let data;
+  try { data = decode(location.hash); } catch { data = null; }
+  if (!valid(data)) {
+    app.append(el('div', 'error', '這個連結不完整，無法顯示試算結果。', el('small', '', '請回店裡請店員重新給您掃描一次。')));
+    return;
+  }
+  const [, provider, vehicle, when, compulsory, voluntary, groups] = data;
+  // 合計只用兩個小計相加，比照結果頁與試算單。
+  const total = (compulsory ?? 0) + (voluntary ?? 0);
+  document.title = `${provider}保費試算結果`;
+
+  const doc = el('article', 'doc',
+    el('header', 'head', el('span', 'check', '✓'), el('div', '', el('p', 'eyebrow', '保費試算結果'), el('h1', '', el('span', 'mark', provider)))),
+    el('p', 'when', `試算時間：${when}`),
+    el('section', 'vehicle', el('p', 'vehicle-label', '本次試算車種'), el('p', 'vehicle-value', el('span', 'mark', vehicle))),
+    el('section', 'cards',
+      el('div', 'card', el('p', 'card-label', '強制險保費'), compulsory === null ? el('p', 'not-selected', '未選擇') : ntd(compulsory, 'amount')),
+      el('div', 'card highlight', el('p', 'card-label', '任意險小計'), voluntary === null ? el('p', 'not-selected', '未選擇') : ntd(voluntary, 'amount'))),
+    el('section', 'total', el('p', 'total-label', '合計', el('small', '', '強制險＋任意險')), ntd(total, 'total-amount')));
+
+  for (const [label, rows] of groups) {
+    const section = el('section', 'details', el('h2', '', `${label}明細`));
+    for (const row of rows) {
+      if (row[1] === 'x' || row[1] === 'free') {
+        const free = row[1] === 'free';
+        section.append(el('div', `row not-offered${free ? ' free' : ''}`,
+          el('div', 'row-top', el('span', 'name', row[0]), el('p', 'pay', el('strong', '', free ? '免費送' : '不提供'))),
+          el('small', 'note', row[2])));
+        continue;
+      }
+      const tiles = row[2].length ? el('div', 'tiles', ...row[2].map((tile) => el('div', 'tile',
+        el('span', 'tile-label', tile[0]), el('span', 'tile-amount', tile[1], tile[2] ? el('small', '', tile[2]) : null), tile[3] ? el('span', 'tile-note', tile[3]) : null))) : null;
+      section.append(el('div', 'row',
+        el('div', 'row-top', el('span', 'name', row[0]), el('p', 'pay', el('small', '', '保費'), el('strong', '', el('small', '', 'NT$ '), money(row[1])))),
+        tiles, row[3] ? el('small', 'upcoming', row[3]) : null));
+    }
+    doc.append(section);
+  }
+  doc.append(
+    el('aside', 'warning', el('strong', '', '試算結果提醒'), '本頁為網路試算結果，與業務人員正式報價可能因資料、核保條件或費率更新而有些許差異，實際保費與承保內容仍以保險公司正式報價為準。'),
+    el('p', 'fine', '本工具僅供保費試算，不代表已完成投保或保險公司已同意承保。'));
+  app.append(doc, el('p', 'privacy', '這份結果全部裝在您剛剛掃描的連結裡，這個網頁不會把資料傳到任何地方，也沒有您的身分證字號、生日或車牌。'));
+
+  const toast = (text) => {
+    const node = el('div', 'toast', text);
+    document.body.append(node);
+    setTimeout(() => node.remove(), 2200);
+  };
+
+  // 存成圖片：用 canvas 重畫一份（不依賴截圖程式庫），做成 <img> 讓客人長按儲存；iPhone、Android 都能長按存圖。
+  const drawImage = () => {
+    const W = 1080, P = 64, fontFamily = '"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${fontFamily}`; };
+    const wrap = (text, width) => {
+      const lines = []; let line = '';
+      for (const character of text) {
+        if (ctx.measureText(line + character).width > width && line) { lines.push(line); line = character; } else line += character;
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    // 先跑一次只量高度，再跑一次真的畫。
+    const paint = (draw) => {
+      let y = P;
+      const text = (value, x, size, color, weight, align = 'left') => {
+        font(size, weight);
+        if (draw) { ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(value, x, y); }
+      };
+      const box = (h, stroke, fill, lw = 4) => {
+        if (!draw) return;
+        ctx.beginPath();
+        // 舊手機（iOS 15 以前）沒有 roundRect，改畫直角框。
+        if (ctx.roundRect) ctx.roundRect(P, y, W - P * 2, h, 28); else ctx.rect(P, y, W - P * 2, h);
+        if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+        ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
+      };
+      ctx.textBaseline = 'top';
+      text('保費試算結果', P, 36, '#566479', 700); y += 52;
+      font(72, 900);
+      if (draw) { const w = ctx.measureText(provider).width; ctx.fillStyle = '#ffe14d'; ctx.fillRect(P - 6, y + 40, w + 12, 30); }
+      text(provider, P, 72, '#172033', 900); y += 96;
+      text(`試算時間：${when}`, P, 32, '#566479', 700); y += 64;
+      box(150, '#172033', '#fff', 5);
+      y += 22; text('本次試算車種', P + 36, 32, '#566479', 700); y += 44;
+      font(60, 900);
+      if (draw) { const w = ctx.measureText(vehicle).width; ctx.fillStyle = '#ffe14d'; ctx.fillRect(P + 30, y + 34, w + 12, 24); }
+      text(vehicle, P + 36, 60, '#172033', 900); y += 84 + 28;
+      for (const [label, value, fill] of [['強制險保費', compulsory, '#fff'], ['任意險小計', voluntary, '#eef6ff']]) {
+        box(104, '#cbd7e5', fill, 3);
+        y += 28; text(label, P + 36, 40, '#172033', 800);
+        text(value === null ? '未選擇' : `NT$ ${money(value)}`, W - P - 36, 48, value === null ? '#718096' : '#b84c13', 900, 'right');
+        y += 76 + 18;
+      }
+      box(130, '#b84c13', '#fff4ec', 5);
+      y += 38; text('合計（強制險＋任意險）', P + 36, 40, '#172033', 800);
+      y -= 12; text(`NT$ ${money(total)}`, W - P - 36, 72, '#b84c13', 900, 'right'); y += 104 + 30;
+      for (const [label, rows] of groups) {
+        text(`${label}明細`, P, 38, '#172033', 800); y += 58;
+        for (const row of rows) {
+          if (draw) { ctx.fillStyle = '#d8e0e9'; ctx.fillRect(P, y, W - P * 2, 2); }
+          y += 20;
+          const special = row[1] === 'x' || row[1] === 'free';
+          text(row[0], P, 42, '#172033', 800);
+          text(special ? (row[1] === 'free' ? '免費送' : '不提供') : `NT$ ${money(row[1])}`, W - P, 46, row[1] === 'free' ? '#0f766e' : '#b84c13', 900, 'right');
+          y += 62;
+          if (special) {
+            font(32, 700);
+            for (const line of wrap(row[2], W - P * 2)) { text(line, P, 32, row[1] === 'free' ? '#0f766e' : '#b84c13', 700); y += 44; }
+          } else {
+            const line = row[2].map((tile) => `${tile[0]} ${tile[1]} ${tile[2]}`.trim()).join('／');
+            if (line) { font(36, 800); for (const part of wrap(line, W - P * 2)) { text(part, P, 36, '#1757a6', 800); y += 50; } }
+            if (row[3]) { font(30, 700); for (const part of wrap(row[3], W - P * 2)) { text(part, P, 30, '#b84c13', 700); y += 42; } }
+          }
+          y += 14;
+        }
+        y += 20;
+      }
+      font(28, 600);
+      for (const line of wrap('網路試算結果，實際保費與承保內容以保險公司正式報價為準；不代表已完成投保。', W - P * 2)) { text(line, P, 28, '#64748b', 600); y += 40; }
+      return y + P;
+    };
+    canvas.width = W; canvas.height = 10;
+    const height = paint(false);
+    canvas.height = height;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, height);
+    paint(true);
+    return canvas.toDataURL('image/png');
+  };
+
+  const showImage = () => {
+    let url;
+    try { url = drawImage(); } catch { toast('這支手機無法產生圖片，請直接截圖。'); return; }
+    const close = el('button', '', '關閉');
+    const download = el('a', '', '下載圖片');
+    download.href = url; download.download = `${provider}保費試算結果.png`;
+    const image = el('img', ''); image.src = url; image.alt = `${provider}保費試算結果`;
+    const sheet = el('div', 'sheet', el('p', '', '長按下面的圖片，選「下載圖片」或「儲存圖片」，就會存到手機相簿。'), image, download, close);
+    close.addEventListener('click', () => sheet.remove());
+    document.body.append(sheet);
+  };
+
+  // 傳給家人：用手機內建的分享（LINE 等）；不支援時改成複製連結。
+  const share = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: `${provider}保費試算結果`, url: location.href }); } catch { /* 客人取消分享 */ }
+      return;
+    }
+    try { await navigator.clipboard.writeText(location.href); toast('已複製連結，可以貼到 LINE 給家人。'); }
+    catch { toast('這支手機無法複製，請用瀏覽器的分享功能。'); }
+  };
+
+  const saveButton = el('button', 'btn-primary', '存成圖片');
+  const shareButton = el('button', 'btn-secondary', '傳給家人');
+  saveButton.addEventListener('click', showImage);
+  shareButton.addEventListener('click', () => { void share(); });
+  document.body.append(el('nav', 'bar', el('div', 'bar-inner', shareButton, saveButton)));
+})();
+</script>
+</body>
+</html>
