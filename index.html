@@ -68,10 +68,9 @@
   .fine { margin: 10px 0 0; text-align: center; color: #64748b; font-size: 13px; }
   .privacy { margin: 14px 4px 0; color: #566479; font-size: 13px; line-height: 1.7; text-align: center; }
   .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: #fff; border-top: 2px solid #d8e0e9; box-shadow: 0 -8px 24px rgba(15, 23, 42, .1); }
-  .bar-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(560px, 100%); margin: 0 auto; }
+  .bar-inner { display: grid; grid-template-columns: 1fr; width: min(560px, 100%); margin: 0 auto; }
   .bar button { min-height: 56px; border-radius: 14px; font: inherit; font-size: 18px; font-weight: 800; }
   .btn-primary { border: 2.5px solid #1d4ed8; background: #1d4ed8; color: #fff; }
-  .btn-secondary { border: 2.5px solid #1d4ed8; background: #fff; color: #1d4ed8; }
   .error { padding: 28px 20px; border: 2px solid #b84c13; border-radius: 18px; background: #fff; font-size: 20px; font-weight: 750; line-height: 1.7; }
   .error small { display: block; margin-top: 8px; color: #566479; font-size: 15px; font-weight: 600; }
   .sheet { position: fixed; inset: 0; z-index: 5; display: grid; align-content: start; gap: 12px; padding: 16px; overflow-y: auto; background: rgba(15, 23, 42, .82); }
@@ -266,21 +265,11 @@
     document.body.append(sheet);
   };
 
-  // 傳給家人：用手機內建的分享（LINE 等）；不支援時改成複製連結。
-  const share = async () => {
-    if (navigator.share) {
-      try { await navigator.share({ title: `${provider}保費試算結果`, url: location.href }); } catch { /* 客人取消分享 */ }
-      return;
-    }
-    try { await navigator.clipboard.writeText(location.href); toast('已複製連結，可以貼到 LINE 給家人。'); }
-    catch { toast('這支手機無法複製，請用瀏覽器的分享功能。'); }
-  };
-
+  // 只有「存成圖片」：要傳給家人就從相簿傳圖片。不提供分享網址（2026-11-16 使用者決定移除「傳給家人」：
+  // 網址又長又像詐騙連結、可以被改，也會把整段資料留在 LINE；客人真的想直接分享時再討論改成分享圖片）。
   const saveButton = el('button', 'btn-primary', '存成圖片');
-  const shareButton = el('button', 'btn-secondary', '傳給家人');
   saveButton.addEventListener('click', showImage);
-  shareButton.addEventListener('click', () => { void share(); });
-  document.body.append(el('nav', 'bar', el('div', 'bar-inner', shareButton, saveButton)));
+  document.body.append(el('nav', 'bar', el('div', 'bar-inner', saveButton)));
 })();
 </script>
 </body>
